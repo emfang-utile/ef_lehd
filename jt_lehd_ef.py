@@ -173,8 +173,38 @@ def get_muni(muni, state):
     except Exception as e:
         print(f"Error fetching or processing county subdivision data for {state}: {e}")
 
+def get_muni_all(state):
+    # Use get_fips to get the state FIPS code
+    state_usps, state_name, state_fips, _ = get_fips(state)
+
+    # Construct the URL for the COUSUB file
+    cousub_url = f"https://www2.census.gov/geo/tiger/TIGER2021/COUSUB/tl_2021_{state_fips}_cousub.zip"
+
+    # Fetch the COUSUB data
+    try:
+        response = requests.get(cousub_url)
+        if response.status_code != 200:
+            raise Exception(f"Failed to download county subdivision data with status code {response.status_code}")
+
+        # Save the downloaded zip file
+        zip_path = f"{state_fips}_cousub.zip"
+        with open(zip_path, 'wb') as f:
+            f.write(response.content)
+
+        # Read the shapefile from the zip archive
+        try:
+            gdf = gpd.read_file(f"zip://{zip_path}")
+
+            print(f"Successfully extracted all municipalities in '{state}'.")
+            return gdf
+
+        finally:
+            os.remove(zip_path)  # Remove the zip file after reading
+
+    except Exception as e:
+        print(f"Error fetching or processing county subdivision data for {state}: {e}")
     
-def fetch_OD(muni, state, year, direction):
+def fetch_OD(muni, state, year):
     # Convert state to lowercase
     state = state.lower()
 
@@ -315,18 +345,16 @@ def fetch_OD(muni, state, year, direction):
         From_muni_gdf = all_blocks.merge(From_muni_sum, left_on='GEOID', right_on='w_GEOID', how='inner')
         To_muni_gdf = all_blocks.merge(To_muni_sum, left_on='GEOID', right_on='h_GEOID', how='inner')
 
-        # Export and return based on direction
-        if direction == "from":
-            From_muni_gdf.to_file(f"From_{muni}_{year}.gpkg", driver='GPKG')
-            From_muni_per_state.to_csv(f"From_{muni}_per_state_{year}.csv", index=False)
-            return From_muni_gdf
-        elif direction == "to":
-            To_muni_gdf.to_file(f"To_{muni}_{year}.gpkg", driver='GPKG')
-            To_muni_per_state.to_csv(f"To_{muni}_per_state_{year}.csv", index=False)
-            return To_muni_gdf
-        else:
-            print("Invalid direction. Use 'from' or 'to'.")
-            return None
+        # Export and return
+        From_muni_gdf.to_file(f"output/From_{muni}_{year}.gpkg", driver='GPKG')
+        From_muni_per_state.to_csv(f"output/From_{muni}_per_state_{year}.csv", index=False)
+        print(f"Successfully exported commutes from {muni}.")
+
+        To_muni_gdf.to_file(f"output/To_{muni}_{year}.gpkg", driver='GPKG')
+        To_muni_per_state.to_csv(f"output/To_{muni}_per_state_{year}.csv", index=False)
+        print(f"Successfully exported commutes to {muni}.")
+        
+        return From_muni_gdf, To_muni_gdf
 
 
 
